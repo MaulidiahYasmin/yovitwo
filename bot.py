@@ -1,4 +1,5 @@
 import os
+import json
 from datetime import datetime
 
 from telegram import Update
@@ -19,14 +20,18 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SHEET_ID = os.getenv("SHEET_ID")
+GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON")
 
 print("🔥 BOT PAKAI SHEET_ID:", SHEET_ID)
 
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN belum di-set")
+    raise ValueError("❌ BOT_TOKEN belum di-set")
 
 if not SHEET_ID:
-    raise ValueError("SHEET_ID belum di-set")
+    raise ValueError("❌ SHEET_ID belum di-set")
+
+if not GOOGLE_CREDENTIALS_JSON:
+    raise ValueError("❌ GOOGLE_CREDENTIALS_JSON belum di-set")
 
 # =====================
 # GOOGLE SHEET
@@ -36,21 +41,25 @@ scope = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-creds = ServiceAccountCredentials.from_json_keyfile_name(
-    "gcredentials.json", scope
+creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+
+creds = ServiceAccountCredentials.from_json_keyfile_dict(
+    creds_dict, scope
 )
 
 client = gspread.authorize(creds)
-
 spreadsheet = client.open_by_key(SHEET_ID)
 
-# worksheet utama
+# =====================
+# WORKSHEETS
+# =====================
 try:
     sheet = spreadsheet.worksheet("recapvisit")
 except gspread.exceptions.WorksheetNotFound:
-    sheet = spreadsheet.add_worksheet(title="recapvisit", rows=1000, cols=10)
+    sheet = spreadsheet.add_worksheet(
+        title="recapvisit", rows=1000, cols=10
+    )
 
-# worksheet user
 try:
     user_sheet = spreadsheet.worksheet("id_telegram")
 except gspread.exceptions.WorksheetNotFound:
@@ -164,7 +173,9 @@ async def cek(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         target = datetime.strptime(tanggal_str, "%d/%m/%Y")
     except ValueError:
-        await update.message.reply_text("❌ Format salah.\nContoh: /cek 30/01/2026")
+        await update.message.reply_text(
+            "❌ Format salah.\nContoh: /cek 30/01/2026"
+        )
         return
 
     data = sheet.get_all_values()[1:]
@@ -207,7 +218,6 @@ def main():
     app.add_handler(CommandHandler("cek", cek))
 
     print("🤖 YOVI TWO BOT AKTIF")
-
     app.run_polling()
 
 if __name__ == "__main__":
