@@ -1,10 +1,7 @@
 import os
 import json
-from datetime import datetime
-
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-
 import gspread
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
@@ -57,15 +54,15 @@ user_sheet = get_or_create("id_telegram")
 # =====================
 # HEADERS
 # =====================
-USER_HEADER = ["telegram_id","nama_sa","id_sa"]
+USER_HEADER = ["telegram_id", "nama_sa", "id_sa"]
 if user_sheet.row_values(1) != USER_HEADER:
-    user_sheet.update("A1:C1",[USER_HEADER])
+    user_sheet.update("A1:C1", [USER_HEADER])
 
-MAIN_HEADER = ["No","Hari","Tanggal","Customer","Plan Agenda","Hasil","SA","ID SA"]
+MAIN_HEADER = ["No", "Hari", "Tanggal", "Customer", "Plan Agenda", "Hasil", "SA", "ID SA"]
 
 for s in [visitplan_sheet, recap_sheet]:
     if s.row_values(1) != MAIN_HEADER:
-        s.update("A1:H1",[MAIN_HEADER])
+        s.update("A1:H1", [MAIN_HEADER])
 
 # =====================
 # USER INFO
@@ -80,10 +77,9 @@ def get_user_info(tg_id):
 # =====================
 # CORE SAVE
 # =====================
-async def save(sheet, update: Update):
+async def save(sheet, update: Update, success_text):
 
-    full_text = update.message.text
-    parts = full_text.split("\n", 1)
+    parts = update.message.text.split("\n", 1)
 
     if len(parts) < 2:
         await update.message.reply_text(
@@ -109,10 +105,8 @@ async def save(sheet, update: Update):
         await update.message.reply_text("❌ Telegram ID belum terdaftar.")
         return
 
-    existing = sheet.get_all_values()
-    no = len(existing)
-
-    ok = fail = 0
+    no = len(sheet.get_all_values())
+    inserted = 0
 
     for line in text.split("\n"):
         if not line.strip():
@@ -121,7 +115,6 @@ async def save(sheet, update: Update):
         cols = [x.strip() for x in line.split("|")]
 
         if len(cols) != 3:
-            fail += 1
             continue
 
         customer, agenda, hasil = cols
@@ -138,20 +131,21 @@ async def save(sheet, update: Update):
         ])
 
         no += 1
-        ok += 1
+        inserted += 1
 
-    await update.message.reply_text(
-        f"✅ Masuk: {ok}\n❌ Salah format: {fail}"
-    )
+    if inserted > 0:
+        await update.message.reply_text(success_text)
+    else:
+        await update.message.reply_text("❌ Format salah.")
 
 # =====================
 # COMMANDS
 # =====================
 async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await save(visitplan_sheet, update)
+    await save(visitplan_sheet, update, "✅ Visit plan tersimpan.")
 
 async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await save(recap_sheet, update)
+    await save(recap_sheet, update, "✅ Recap visit tersimpan.")
 
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Telegram ID kamu:\n{update.effective_user.id}")
