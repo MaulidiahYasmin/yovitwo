@@ -3,14 +3,10 @@ import json
 from datetime import datetime
 
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 
 # =====================
@@ -22,202 +18,137 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 SHEET_ID = os.getenv("SHEET_ID")
 GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON")
 
-print("🔥 BOT PAKAI SHEET_ID:", SHEET_ID)
-
 if not BOT_TOKEN:
-    raise ValueError("❌ BOT_TOKEN belum di-set")
+    raise ValueError("BOT_TOKEN kosong")
 
 if not SHEET_ID:
-    raise ValueError("❌ SHEET_ID belum di-set")
+    raise ValueError("SHEET_ID kosong")
 
 if not GOOGLE_CREDENTIALS_JSON:
-    raise ValueError("❌ GOOGLE_CREDENTIALS_JSON belum di-set")
+    raise ValueError("GOOGLE_CREDENTIALS_JSON kosong")
 
 # =====================
-# GOOGLE SHEET
+# GOOGLE AUTH
 # =====================
-scope = [
-    "https://spreadsheets.google.com/feeds",
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
 
 creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
 
-creds = ServiceAccountCredentials.from_json_keyfile_dict(
-    creds_dict, scope
-)
+creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 
 client = gspread.authorize(creds)
+
 spreadsheet = client.open_by_key(SHEET_ID)
 
 # =====================
-# WORKSHEETS
+# SHEETS
 # =====================
-try:
-    sheet = spreadsheet.worksheet("recapvisit")
-except gspread.exceptions.WorksheetNotFound:
-    sheet = spreadsheet.add_worksheet(
-        title="recapvisit", rows=1000, cols=10
-    )
+def get_or_create(title, rows, cols):
+    try:
+        return spreadsheet.worksheet(title)
+    except:
+        return spreadsheet.add_worksheet(title=title, rows=rows, cols=cols)
 
-try:
-    user_sheet = spreadsheet.worksheet("id_telegram")
-except gspread.exceptions.WorksheetNotFound:
-    user_sheet = spreadsheet.add_worksheet(
-        title="id_telegram", rows=100, cols=1
-    )
-    user_sheet.update("A1", [["user_id"]])
+recap_sheet = get_or_create("recapvisit", 1000, 10)
+user_sheet = get_or_create("id_telegram", 100, 3)
 
 # =====================
-# HEADER
+# HEADERS
 # =====================
-HEADER = [
-    "No", "Hari", "Tanggal",
-    "Customer", "Jenis Kegiatan",
-    "Aktivitas", "Hasil",
-    "SA", "ID SA", "Status"
-]
+if user_sheet.row_values(1) != ["telegram_id", "nama_sa", "id_sa"]:
+    user_sheet.update("A1:C1", [["telegram_id", "nama_sa", "id_sa"]])
 
-if sheet.row_values(1) != HEADER:
-    sheet.update("A1:J1", [HEADER])
+HEADER = ["No","Hari","Tanggal","Customer","Plan Agenda","Hasil","SA","ID SA","Status"]
+
+if recap_sheet.row_values(1) != HEADER:
+    recap_sheet.update("A1:I1", [HEADER])
 
 # =====================
-# AKSES USER
+# GET USER INFO
 # =====================
-def is_user_allowed(user_id: int) -> bool:
-    ids = user_sheet.col_values(1)[1:]
-    if not ids:
-        return True
-    return str(user_id) in ids
+def get_user_info(tg_id):
+    rows = user_sheet.get_all_values()[1:]
+    for r in rows:
+        if r and str(tg_id) == r[0]:
+            return r[1], r[2]
+    return None, None
 
 # =====================
 # /recapvisit
 # =====================
 async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_user_allowed(update.effective_user.id):
-        return
 
     text = update.message.text.replace("/recapvisit", "").strip()
 
     if not text:
         await update.message.reply_text(
-            "Format:\n"
-            "Customer | Jenis | Aktivitas | Hasil | SA | ID SA | Tanggal | Status\n\n"
-            "Contoh:\n"
-            "PT ABC | Visit | Survey | OK | Andi | SA001 | 29/01/2026 | -"
+            "/recapvisit\nNama Pelanggan | Plan Agenda | Hasil Visit"
         )
         return
 
-    data_existing = sheet.get_all_values()[1:]
-    success, failed = 0, 0
+    now = update.message.date.astimezone()
+    hari = now.strftime("%A")
+    tanggal = now.strftime("%d/%m/%Y")
+
+    tg_id = update.effective_user.id
+    nama_sa, id_sa = get_user_info(tg_id)
+
+    if not nama_sa:
+        await update.message.reply_text("❌ Telegram ID belum terdaftar.")
+        return
+
+    ok = fail = 0
 
     for line in text.split("\n"):
         parts = [p.strip() for p in line.split("|")]
 
-        if len(parts) != 8:
-            failed += 1
+        if len(parts) != 3:
+            fail += 1
             continue
 
-        customer, jenis, aktivitas, hasil, sa, id_sa, tanggal_str, status = parts
+        customer, agenda, hasil = parts
 
-        try:
-            tanggal = datetime.strptime(tanggal_str, "%d/%m/%Y")
-            hari = tanggal.strftime("%A")
-        except ValueError:
-            failed += 1
-            continue
+        no = len(recap_sheet.get_all_values())
 
-        if not status:
-            status = "-"
+        recap_sheet.append_row([
+            no,
+            hari,
+            tanggal,
+            customer,
+            agenda,
+            hasil,
+            nama_sa,
+            id_sa,
+            "DONE"
+        ])
 
-        found_row = None
-
-        for idx, r in enumerate(data_existing, start=2):
-            if (
-                r[2] == tanggal_str and
-                r[3] == customer and
-                r[4] == jenis and
-                r[5] == aktivitas
-            ):
-                found_row = idx
-                break
-
-        if found_row:
-            sheet.update(
-                f"G{found_row}:J{found_row}",
-                [[hasil, sa, id_sa, status]]
-            )
-        else:
-            new_no = len(sheet.get_all_values())
-            sheet.append_row([
-                new_no, hari, tanggal_str,
-                customer, jenis, aktivitas,
-                hasil, sa, id_sa, status
-            ])
-
-        success += 1
+        ok += 1
 
     await update.message.reply_text(
-        f"✅ Berhasil: {success}\n❌ Gagal: {failed}"
+        f"✅ Berhasil: {ok}\n❌ Format salah: {fail}"
     )
 
 # =====================
-# /cek DD/MM/YYYY
+# /myid
 # =====================
-async def cek(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_user_allowed(update.effective_user.id):
-        return
-
-    tanggal_str = update.message.text.replace("/cek", "").strip()
-
-    try:
-        target = datetime.strptime(tanggal_str, "%d/%m/%Y")
-    except ValueError:
-        await update.message.reply_text(
-            "❌ Format salah.\nContoh: /cek 30/01/2026"
-        )
-        return
-
-    data = sheet.get_all_values()[1:]
-    unik = {}
-
-    for r in data:
-        if len(r) < 10:
-            continue
-        if r[2] != tanggal_str:
-            continue
-        key = (r[2], r[3], r[4], r[5])
-        unik[key] = r
-
-    if not unik:
-        await update.message.reply_text(
-            f"📅 {tanggal_str} ({target.strftime('%A')})\n\nTidak ada kegiatan."
-        )
-        return
-
-    reply = f"📅 {tanggal_str} ({target.strftime('%A')})\n\n"
-
-    for i, r in enumerate(unik.values(), start=1):
-        status = r[9] if r[9].strip() else "-"
-        reply += (
-            f"{i}. {r[3]}\n"
-            f"   {r[4]} | {r[5]}\n"
-            f"   Hasil: {r[6]}\n"
-            f"   Status: {status}\n\n"
-        )
-
-    await update.message.reply_text(reply)
+async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        f"Telegram ID kamu:\n{update.effective_user.id}"
+    )
 
 # =====================
-# START BOT
+# START
 # =====================
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("recapvisit", recapvisit))
-    app.add_handler(CommandHandler("cek", cek))
+    app.add_handler(CommandHandler("myid", myid))
 
-    print("🤖 YOVI TWO BOT AKTIF")
+    print("🤖 YOVI TWO BOT RUNNING")
     app.run_polling()
 
 if __name__ == "__main__":
