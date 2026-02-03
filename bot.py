@@ -20,10 +20,8 @@ GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON")
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN kosong")
-
 if not SHEET_ID:
     raise ValueError("SHEET_ID kosong")
-
 if not GOOGLE_CREDENTIALS_JSON:
     raise ValueError("GOOGLE_CREDENTIALS_JSON kosong")
 
@@ -35,61 +33,60 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+creds = Credentials.from_service_account_info(
+    json.loads(GOOGLE_CREDENTIALS_JSON),
+    scopes=SCOPES
+)
 
-creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 client = gspread.authorize(creds)
-
 spreadsheet = client.open_by_key(SHEET_ID)
 
 # =====================
 # SHEETS
 # =====================
-def get_or_create(title, rows, cols):
+def get_or_create(title):
     try:
         return spreadsheet.worksheet(title)
     except:
-        return spreadsheet.add_worksheet(title=title, rows=rows, cols=cols)
+        return spreadsheet.add_worksheet(title=title, rows=1000, cols=10)
 
-visitplan_sheet = get_or_create("visitplan", 1000, 10)
-user_sheet = get_or_create("id_telegram", 100, 3)
+visitplan_sheet = get_or_create("visitplan")
+recap_sheet = get_or_create("recapvisit")
+user_sheet = get_or_create("id_telegram")
 
 # =====================
 # HEADERS
 # =====================
-USER_HEADER = ["telegram_id", "nama_sa", "id_sa"]
+USER_HEADER = ["telegram_id","nama_sa","id_sa"]
 if user_sheet.row_values(1) != USER_HEADER:
-    user_sheet.update("A1:C1", [USER_HEADER])
+    user_sheet.update("A1:C1",[USER_HEADER])
 
-VISITPLAN_HEADER = [
-    "No","Hari","Tanggal",
-    "Customer","Plan Agenda","Hasil",
-    "SA","ID SA","Status"
-]
+HEADER = ["No","Hari","Tanggal","Customer","Plan Agenda","Hasil","SA","ID SA"]
 
-if visitplan_sheet.row_values(1) != VISITPLAN_HEADER:
-    visitplan_sheet.update("A1:I1", [VISITPLAN_HEADER])
+for s in [visitplan_sheet, recap_sheet]:
+    if s.row_values(1) != HEADER:
+        s.update("A1:H1",[HEADER])
 
 # =====================
-# GET USER INFO
+# USER INFO
 # =====================
 def get_user_info(tg_id):
     rows = user_sheet.get_all_values()[1:]
     for r in rows:
-        if len(r) >= 3 and str(tg_id).strip() == str(r[0]).strip():
+        if len(r)>=3 and str(r[0]).strip()==str(tg_id).strip():
             return r[1], r[2]
-    return None, None
+    return None,None
 
 # =====================
-# /visitplan
+# CORE SAVE FUNCTION
 # =====================
-async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def save(sheet, update: Update):
 
-    text = update.message.text.replace("/visitplan", "").strip()
+    text = update.message.text.split("\n",1)[1] if "\n" in update.message.text else ""
 
     if not text:
         await update.message.reply_text(
-            "/visitplan\nNama Pelanggan | Plan Agenda | Hasil Visit"
+            "Nama Pelanggan | Plan Agenda | Hasil"
         )
         return
 
@@ -97,63 +94,58 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hari = now.strftime("%A")
     tanggal = now.strftime("%d/%m/%Y")
 
-    tg_id = update.effective_user.id
-    nama_sa, id_sa = get_user_info(tg_id)
+    nama_sa,id_sa = get_user_info(update.effective_user.id)
 
     if not nama_sa:
-        await update.message.reply_text("❌ Telegram ID belum terdaftar di sheet.")
+        await update.message.reply_text("❌ Telegram ID belum terdaftar.")
         return
 
-    ok = fail = 0
+    ok=fail=0
 
     for line in text.split("\n"):
-        parts = [p.strip() for p in line.split("|")]
-
-        if len(parts) != 3:
-            fail += 1
+        p=[x.strip() for x in line.split("|")]
+        if len(p)!=3:
+            fail+=1
             continue
 
-        customer, agenda, hasil = parts
+        customer,agenda,hasil=p
 
-        no = len(visitplan_sheet.get_all_values())
+        no=len(sheet.get_all_values())
 
-        visitplan_sheet.append_row([
-            no,
-            hari,
-            tanggal,
-            customer,
-            agenda,
-            hasil,
-            nama_sa,
-            id_sa,
-            "PLAN"
+        sheet.append_row([
+            no,hari,tanggal,
+            customer,agenda,hasil,
+            nama_sa,id_sa
         ])
 
-        ok += 1
+        ok+=1
 
-    await update.message.reply_text(
-        f"📋 VISIT PLAN\n✅ Masuk: {ok}\n❌ Format salah: {fail}"
-    )
+    await update.message.reply_text(f"✅ Masuk: {ok}\n❌ Salah format: {fail}")
 
 # =====================
-# /myid
+# COMMANDS
 # =====================
-async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        f"Telegram ID kamu:\n{update.effective_user.id}"
-    )
+async def visitplan(update:Update,context:ContextTypes.DEFAULT_TYPE):
+    await save(visitplan_sheet,update)
+
+async def recapvisit(update:Update,context:ContextTypes.DEFAULT_TYPE):
+    await save(recap_sheet,update)
+
+async def myid(update:Update,context:ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(str(update.effective_user.id))
 
 # =====================
-# START BOT
+# START
 # =====================
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app=ApplicationBuilder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("visitplan", visitplan))
-    app.add_handler(CommandHandler("myid", myid))
+    app.add_handler(CommandHandler("visitplan",visitplan))
+    app.add_handler(CommandHandler("recapvisit",recapvisit))
+    app.add_handler(CommandHandler("myid",myid))
 
-    print("🤖 YOVI TWO BOT RUNNING")
+    print("🤖 BOT RUNNING")
     app.run_polling()
 
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
