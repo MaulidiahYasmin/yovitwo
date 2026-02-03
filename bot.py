@@ -38,7 +38,6 @@ SCOPES = [
 creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
 
 creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-
 client = gspread.authorize(creds)
 
 spreadsheet = client.open_by_key(SHEET_ID)
@@ -52,19 +51,24 @@ def get_or_create(title, rows, cols):
     except:
         return spreadsheet.add_worksheet(title=title, rows=rows, cols=cols)
 
-recap_sheet = get_or_create("recapvisit", 1000, 10)
+visitplan_sheet = get_or_create("visitplan", 1000, 10)
 user_sheet = get_or_create("id_telegram", 100, 3)
 
 # =====================
 # HEADERS
 # =====================
-if user_sheet.row_values(1) != ["telegram_id", "nama_sa", "id_sa"]:
-    user_sheet.update("A1:C1", [["telegram_id", "nama_sa", "id_sa"]])
+USER_HEADER = ["telegram_id", "nama_sa", "id_sa"]
+if user_sheet.row_values(1) != USER_HEADER:
+    user_sheet.update("A1:C1", [USER_HEADER])
 
-HEADER = ["No","Hari","Tanggal","Customer","Plan Agenda","Hasil","SA","ID SA","Status"]
+VISITPLAN_HEADER = [
+    "No","Hari","Tanggal",
+    "Customer","Plan Agenda","Hasil",
+    "SA","ID SA","Status"
+]
 
-if recap_sheet.row_values(1) != HEADER:
-    recap_sheet.update("A1:I1", [HEADER])
+if visitplan_sheet.row_values(1) != VISITPLAN_HEADER:
+    visitplan_sheet.update("A1:I1", [VISITPLAN_HEADER])
 
 # =====================
 # GET USER INFO
@@ -72,20 +76,20 @@ if recap_sheet.row_values(1) != HEADER:
 def get_user_info(tg_id):
     rows = user_sheet.get_all_values()[1:]
     for r in rows:
-        if r and str(tg_id) == r[0]:
+        if len(r) >= 3 and str(tg_id).strip() == str(r[0]).strip():
             return r[1], r[2]
     return None, None
 
 # =====================
-# /recapvisit
+# /visitplan
 # =====================
-async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    text = update.message.text.replace("/recapvisit", "").strip()
+    text = update.message.text.replace("/visitplan", "").strip()
 
     if not text:
         await update.message.reply_text(
-            "/recapvisit\nNama Pelanggan | Plan Agenda | Hasil Visit"
+            "/visitplan\nNama Pelanggan | Plan Agenda | Hasil Visit"
         )
         return
 
@@ -97,7 +101,7 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nama_sa, id_sa = get_user_info(tg_id)
 
     if not nama_sa:
-        await update.message.reply_text("❌ Telegram ID belum terdaftar.")
+        await update.message.reply_text("❌ Telegram ID belum terdaftar di sheet.")
         return
 
     ok = fail = 0
@@ -111,9 +115,9 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         customer, agenda, hasil = parts
 
-        no = len(recap_sheet.get_all_values())
+        no = len(visitplan_sheet.get_all_values())
 
-        recap_sheet.append_row([
+        visitplan_sheet.append_row([
             no,
             hari,
             tanggal,
@@ -122,13 +126,13 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
             hasil,
             nama_sa,
             id_sa,
-            "DONE"
+            "PLAN"
         ])
 
         ok += 1
 
     await update.message.reply_text(
-        f"✅ Berhasil: {ok}\n❌ Format salah: {fail}"
+        f"📋 VISIT PLAN\n✅ Masuk: {ok}\n❌ Format salah: {fail}"
     )
 
 # =====================
@@ -140,12 +144,12 @@ async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # =====================
-# START
+# START BOT
 # =====================
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("recapvisit", recapvisit))
+    app.add_handler(CommandHandler("visitplan", visitplan))
     app.add_handler(CommandHandler("myid", myid))
 
     print("🤖 YOVI TWO BOT RUNNING")
