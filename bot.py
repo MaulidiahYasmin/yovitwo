@@ -1,6 +1,4 @@
 import os
-import json
-import re
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import gspread
@@ -31,8 +29,11 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-creds = Credentials.from_service_account_info(
-    json.loads(GOOGLE_CREDENTIALS_JSON),
+if not os.path.exists(GOOGLE_CREDENTIALS_JSON):
+    raise ValueError(f"File credentials tidak ditemukan: {GOOGLE_CREDENTIALS_JSON}")
+
+creds = Credentials.from_service_account_file(
+    GOOGLE_CREDENTIALS_JSON,
     scopes=SCOPES
 )
 
@@ -57,13 +58,12 @@ user_sheet = get_or_create("id_telegram")
 # =====================
 USER_HEADER = ["telegram_id", "nama_sa", "id_sa"]
 if user_sheet.row_values(1) != USER_HEADER:
-    user_sheet.update("A1:C1", [USER_HEADER])
+    user_sheet.update(values=[USER_HEADER], range_name="A1:C1")
 
-MAIN_HEADER = ["No", "Hari", "Tanggal", "Customer", "Plan Agenda", "Hasil", "SA", "ID SA"]
-
+MAIN_HEADER = ["No", "Hari", "Tanggal", "Customer", "Agenda", "Hasil", "SA", "ID SA"]
 for s in [visitplan_sheet, recap_sheet]:
     if s.row_values(1) != MAIN_HEADER:
-        s.update("A1:H1", [MAIN_HEADER])
+        s.update(values=[MAIN_HEADER], range_name="A1:H1")
 
 # =====================
 # USER INFO
@@ -75,19 +75,54 @@ def get_user_info(tg_id):
     return None, None
 
 # =====================
+# PARSER (OPSI 1)
+# =====================
+def parse_visit_blocks(text):
+    visits = []
+    current = {}
+
+    for line in text.splitlines():
+        line = line.strip()
+
+        if not line:
+            if current:
+                visits.append(current)
+                current = {}
+            continue
+
+        if ":" in line:
+            key, value = line.split(":", 1)
+            current[key.lower().strip()] = value.strip()
+
+    if current:
+        visits.append(current)
+
+    return visits
+
+# =====================
 # CORE SAVE
 # =====================
 async def save(sheet, update: Update, success_text):
 
     parts = update.message.text.split("\n", 1)
 
-    if len(parts) < 2:
+    if len(parts) < 2 or not parts[1].strip():
         await update.message.reply_text(
-            "Format:\n1. Customer | Agenda | Hasil"
+            "📝 *Format input Visit Plan:*\n\n"
+            "Customer: PT ABC\n"
+            "Agenda: Presentasi Produk\n"
+            "Hasil: -\n\n"
+            "➡️ Pisahkan setiap visit dengan *baris kosong*.",
+            parse_mode="Markdown"
         )
         return
 
-    lines = parts[1].split("\n")
+
+    blocks = parse_visit_blocks(parts[1])
+
+    if not blocks:
+        await update.message.reply_text("❌ Tidak ada data valid.")
+        return
 
     now = update.message.date.astimezone()
     hari = now.strftime("%A")
@@ -102,22 +137,13 @@ async def save(sheet, update: Update, success_text):
     no = len(sheet.get_all_values())
     inserted = 0
 
-    for line in lines:
+    for b in blocks:
+        customer = b.get("customer")
+        agenda = b.get("agenda")
+        hasil = b.get("hasil", "")
 
-        # hapus "1. "
-        line = re.sub(r"^\d+\.\s*", "", line.strip())
-
-        if not line:
+        if not customer or not agenda:
             continue
-
-        cols = [x.strip() for x in line.split("|")]
-
-        if len(cols) < 2:
-            continue
-
-        customer = cols[0]
-        agenda = cols[1]
-        hasil = cols[2] if len(cols) >= 3 else ""
 
         if hasil == "-":
             hasil = ""
@@ -137,7 +163,9 @@ async def save(sheet, update: Update, success_text):
         inserted += 1
 
     if inserted > 0:
-        await update.message.reply_text(success_text)
+        await update.message.reply_text(
+            f"{success_text}\n📝 Total data: {inserted}"
+        )
     else:
         await update.message.reply_text("❌ Tidak ada data valid.")
 
