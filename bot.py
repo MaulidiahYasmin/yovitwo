@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import gspread
@@ -58,29 +59,30 @@ USER_HEADER = ["telegram_id", "nama_sa", "id_sa"]
 if user_sheet.row_values(1) != USER_HEADER:
     user_sheet.update("A1:C1", [USER_HEADER])
 
-MAIN_HEADER = ["No", "Hari", "Tanggal", "Customer", "Plan Agenda", "Hasil", "SA", "ID SA"]
+MAIN_HEADER = ["No", "Hari", "Tanggal", "Customer", "Agenda", "Hasil", "SA", "ID SA"]
 
 for s in [visitplan_sheet, recap_sheet]:
     if s.row_values(1) != MAIN_HEADER:
         s.update("A1:H1", [MAIN_HEADER])
 
 # =====================
-# USER INFO (AUTO REGISTER)
+# AUTO REGISTER USER
 # =====================
 def get_user_info(tg_id):
-    rows = user_sheet.get_all_values()[1:]
-
-    for r in rows:
-        if str(r[0]).strip() == str(tg_id):
+    for r in user_sheet.get_all_values()[1:]:
+        if str(r[0]) == str(tg_id):
             return r[1], r[2]
 
     user_sheet.append_row([tg_id, "Guest", "000"])
     return "Guest", "000"
 
 # =====================
-# PARSER BLOK
+# PARSER (SUPPORT 1. CUSTOMER)
 # =====================
 def parse_blocks(text):
+
+    text = re.sub(r"\n\s*\d+\.\s*", "\n", text)
+
     visits = []
     current = {}
 
@@ -103,26 +105,12 @@ def parse_blocks(text):
     return visits
 
 # =====================
-# VISIT PLAN (NO HASIL)
+# VISIT PLAN
 # =====================
-async def save_visitplan(update: Update):
+async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     parts = update.message.text.split("\n", 1)
-
-    if len(parts) < 2:
-        await update.message.reply_text(
-            "Format Visit Plan:\n\n"
-            "Customer: PT ABC\n"
-            "Agenda: Presentasi Produk\n\n"
-            "Pisahkan tiap visit dengan baris kosong."
-        )
-        return
-
     blocks = parse_blocks(parts[1])
-
-    if not blocks:
-        await update.message.reply_text("❌ Format salah.")
-        return
 
     now = update.message.date.astimezone()
     hari = now.strftime("%A")
@@ -131,44 +119,32 @@ async def save_visitplan(update: Update):
     nama_sa, id_sa = get_user_info(update.effective_user.id)
 
     no = len(visitplan_sheet.get_all_values())
-    inserted = 0
 
     for b in blocks:
-        customer = b.get("customer")
-        agenda = b.get("agenda")
-
-        if not customer or not agenda:
+        if not b.get("customer") or not b.get("agenda"):
             continue
 
         visitplan_sheet.append_row([
             no,
             hari,
             tanggal,
-            customer,
-            agenda,
+            b["customer"],
+            b["agenda"],
             "",
             nama_sa,
             id_sa
         ])
 
         no += 1
-        inserted += 1
 
-    await update.message.reply_text(f"✅ Visit plan tersimpan.\n📝 Total: {inserted}")
+    await update.message.reply_text("✅ Visit plan tersimpan.")
 
 # =====================
-# RECAP VISIT (WAJIB HASIL)
+# RECAP VISIT
 # =====================
-async def save_recap(update: Update):
+async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     parts = update.message.text.split("\n", 1)
-
-    if len(parts) < 2:
-        await update.message.reply_text(
-            "Format Recap:\n\nCustomer:\nAgenda:\nHasil:"
-        )
-        return
-
     blocks = parse_blocks(parts[1])
 
     now = update.message.date.astimezone()
@@ -178,41 +154,29 @@ async def save_recap(update: Update):
     nama_sa, id_sa = get_user_info(update.effective_user.id)
 
     no = len(recap_sheet.get_all_values())
-    inserted = 0
 
     for b in blocks:
-        customer = b.get("customer")
-        agenda = b.get("agenda")
-        hasil = b.get("hasil")
-
-        if not customer or not agenda or not hasil:
+        if not b.get("customer") or not b.get("agenda") or not b.get("hasil"):
             continue
 
         recap_sheet.append_row([
             no,
             hari,
             tanggal,
-            customer,
-            agenda,
-            hasil,
+            b["customer"],
+            b["agenda"],
+            b["hasil"],
             nama_sa,
             id_sa
         ])
 
         no += 1
-        inserted += 1
 
-    await update.message.reply_text(f"✅ Recap visit tersimpan.\n📝 Total: {inserted}")
+    await update.message.reply_text("✅ Recap visit tersimpan.")
 
 # =====================
-# COMMANDS
+# MY ID
 # =====================
-async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await save_visitplan(update)
-
-async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await save_recap(update)
-
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Telegram ID kamu:\n{update.effective_user.id}")
 
@@ -226,7 +190,7 @@ def main():
     app.add_handler(CommandHandler("recapvisit", recapvisit))
     app.add_handler(CommandHandler("myid", myid))
 
-    print("🤖 BOT RUNNING")
+    print("BOT RUNNING")
     app.run_polling()
 
 if __name__ == "__main__":
