@@ -1,6 +1,5 @@
 import os
 import json
-import re
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import gspread
@@ -66,13 +65,42 @@ for s in [visitplan_sheet, recap_sheet]:
         s.update("A1:H1", [MAIN_HEADER])
 
 # =====================
-# USER INFO
+# USER INFO (AUTO REGISTER)
 # =====================
 def get_user_info(tg_id):
-    for r in user_sheet.get_all_values()[1:]:
-        if len(r) >= 3 and str(r[0]).strip() == str(tg_id):
+    rows = user_sheet.get_all_values()[1:]
+
+    for r in rows:
+        if str(r[0]).strip() == str(tg_id):
             return r[1], r[2]
-    return None, None
+
+    user_sheet.append_row([tg_id, "Guest", "000"])
+    return "Guest", "000"
+
+# =====================
+# PARSER
+# =====================
+def parse_blocks(text):
+    visits = []
+    current = {}
+
+    for line in text.splitlines():
+        line = line.strip()
+
+        if not line:
+            if current:
+                visits.append(current)
+                current = {}
+            continue
+
+        if ":" in line:
+            k, v = line.split(":", 1)
+            current[k.lower().strip()] = v.strip()
+
+    if current:
+        visits.append(current)
+
+    return visits
 
 # =====================
 # CORE SAVE
@@ -83,11 +111,19 @@ async def save(sheet, update: Update, success_text):
 
     if len(parts) < 2:
         await update.message.reply_text(
-            "Format:\n1. Customer | Agenda | Hasil"
+            "📝 Format:\n\n"
+            "Customer: PT ABC\n"
+            "Agenda: Presentasi Produk\n"
+            "Hasil: -\n\n"
+            "➡️ Pisahkan tiap visit dengan baris kosong."
         )
         return
 
-    lines = parts[1].split("\n")
+    blocks = parse_blocks(parts[1])
+
+    if not blocks:
+        await update.message.reply_text("❌ Format salah.")
+        return
 
     now = update.message.date.astimezone()
     hari = now.strftime("%A")
@@ -95,29 +131,16 @@ async def save(sheet, update: Update, success_text):
 
     nama_sa, id_sa = get_user_info(update.effective_user.id)
 
-    if not nama_sa:
-        await update.message.reply_text("❌ Telegram ID belum terdaftar.")
-        return
-
     no = len(sheet.get_all_values())
     inserted = 0
 
-    for line in lines:
+    for b in blocks:
+        customer = b.get("customer")
+        agenda = b.get("agenda")
+        hasil = b.get("hasil", "")
 
-        # hapus "1. "
-        line = re.sub(r"^\d+\.\s*", "", line.strip())
-
-        if not line:
+        if not customer or not agenda:
             continue
-
-        cols = [x.strip() for x in line.split("|")]
-
-        if len(cols) < 2:
-            continue
-
-        customer = cols[0]
-        agenda = cols[1]
-        hasil = cols[2] if len(cols) >= 3 else ""
 
         if hasil == "-":
             hasil = ""
@@ -136,8 +159,8 @@ async def save(sheet, update: Update, success_text):
         no += 1
         inserted += 1
 
-    if inserted > 0:
-        await update.message.reply_text(success_text)
+    if inserted:
+        await update.message.reply_text(f"{success_text}\n📝 Total: {inserted}")
     else:
         await update.message.reply_text("❌ Tidak ada data valid.")
 
