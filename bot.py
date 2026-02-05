@@ -53,17 +53,20 @@ recap_sheet = get_or_create("recapvisit")
 user_sheet = get_or_create("id_telegram")
 
 # =====================
-# HEADERS
+# HEADERS (BEDA SHEET)
 # =====================
 USER_HEADER = ["telegram_id", "nama_sa", "id_sa"]
 if user_sheet.row_values(1) != USER_HEADER:
     user_sheet.update("A1:C1", [USER_HEADER])
 
-MAIN_HEADER = ["No", "Hari", "Tanggal", "Customer", "Agenda", "Hasil", "SA", "ID SA"]
+VISIT_HEADER = ["No", "Hari", "Tanggal", "Customer", "Agenda", "SA", "ID SA"]
+RECAP_HEADER = ["No", "Hari", "Tanggal", "Customer", "Agenda", "Hasil", "SA", "ID SA"]
 
-for s in [visitplan_sheet, recap_sheet]:
-    if s.row_values(1) != MAIN_HEADER:
-        s.update("A1:H1", [MAIN_HEADER])
+if visitplan_sheet.row_values(1) != VISIT_HEADER:
+    visitplan_sheet.update("A1:G1", [VISIT_HEADER])
+
+if recap_sheet.row_values(1) != RECAP_HEADER:
+    recap_sheet.update("A1:H1", [RECAP_HEADER])
 
 # =====================
 # AUTO REGISTER USER
@@ -77,7 +80,7 @@ def get_user_info(tg_id):
     return "Guest", "000"
 
 # =====================
-# PARSER (SUPPORT 1. CUSTOMER)
+# PARSER SUPPORT 1. CUSTOMER
 # =====================
 def parse_blocks(text):
 
@@ -105,7 +108,7 @@ def parse_blocks(text):
     return visits
 
 # =====================
-# VISIT PLAN
+# VISIT PLAN (NO HASIL)
 # =====================
 async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -130,7 +133,6 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tanggal,
             b["customer"],
             b["agenda"],
-            "",
             nama_sa,
             id_sa
         ])
@@ -140,7 +142,7 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Visit plan tersimpan.")
 
 # =====================
-# RECAP VISIT
+# RECAP VISIT (WAJIB HASIL)
 # =====================
 async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
