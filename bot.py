@@ -100,11 +100,12 @@ def get_user_info(tg_id):
     return "Guest", "000"
 
 # =====================
-# BLOCK PARSER (support 1.)
+# MULTI BLOCK PARSER
 # =====================
 def parse_blocks(text):
 
-    text = re.sub(r"\n\s*\d+\.\s*", "\n", text)
+    # keep blank line between 1. 2. 3.
+    text = re.sub(r"\n\s*\d+\.\s*", "\n\n", text)
 
     visits = []
     current = {}
@@ -128,11 +129,15 @@ def parse_blocks(text):
     return visits
 
 # =====================
-# VISIT PLAN (NO HASIL)
+# VISIT PLAN
 # =====================
 async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     parts = update.message.text.split("\n", 1)
+    if len(parts) < 2:
+        await update.message.reply_text("Format salah.")
+        return
+
     blocks = parse_blocks(parts[1])
 
     now = update.message.date.astimezone()
@@ -143,7 +148,10 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     no = len(visitplan_sheet.get_all_values())
 
+    masuk = 0
+
     for b in blocks:
+
         if not b.get("customer") or not b.get("agenda"):
             continue
 
@@ -161,11 +169,12 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
 
         no += 1
+        masuk += 1
 
-    await update.message.reply_text("✅ Visit plan tersimpan.")
+    await update.message.reply_text(f"✅ {masuk} Visit Plan tersimpan.")
 
 # =====================
-# RECAP VISIT (WAJIB HASIL)
+# RECAP VISIT
 # =====================
 async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -179,8 +188,10 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nama_sa, id_sa = get_user_info(update.effective_user.id)
 
     no = len(recap_sheet.get_all_values())
+    masuk = 0
 
     for b in blocks:
+
         if not b.get("customer") or not b.get("agenda") or not b.get("hasil"):
             continue
 
@@ -196,8 +207,9 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
 
         no += 1
+        masuk += 1
 
-    await update.message.reply_text("✅ Recap visit tersimpan.")
+    await update.message.reply_text(f"✅ {masuk} Recap Visit tersimpan.")
 
 # =====================
 # MY ID
@@ -206,9 +218,10 @@ async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Telegram ID kamu:\n{update.effective_user.id}")
 
 # =====================
-# START
+# START BOT
 # =====================
 def main():
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("visitplan", visitplan))
