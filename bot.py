@@ -60,7 +60,8 @@ USER_HEADER = ["telegram_id", "nama_sa", "id_sa"]
 
 VISIT_HEADER = ["No","Hari","Tanggal","Kegiatan","Nama Pelanggan","Plan Agenda","SA","ID SA"]
 
-RECAP_HEADER = ["No","Hari","Tanggal","Customer","Agenda","Hasil","SA","ID SA"]
+# AGENDA DIHAPUS DI RECAP
+RECAP_HEADER = ["No","Hari","Tanggal","Customer","Hasil","SA","ID SA"]
 
 if user_sheet.row_values(1) != USER_HEADER:
     user_sheet.update("A1:C1", [USER_HEADER])
@@ -69,7 +70,7 @@ if visitplan_sheet.row_values(1) != VISIT_HEADER:
     visitplan_sheet.update("A1:H1", [VISIT_HEADER])
 
 if recap_sheet.row_values(1) != RECAP_HEADER:
-    recap_sheet.update("A1:H1", [RECAP_HEADER])
+    recap_sheet.update("A1:G1", [RECAP_HEADER])
 
 # =====================
 # AUTO REGISTER USER
@@ -177,7 +178,6 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
             hari,
             tanggal,
             b["customer"],
-            "",        # agenda kosong
             b["hasil"],
             nama_sa,
             id_sa
