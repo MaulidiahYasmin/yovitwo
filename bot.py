@@ -1,6 +1,5 @@
 import os
 import json
-import re
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import gspread
@@ -49,24 +48,29 @@ def get_or_create(title):
         return spreadsheet.add_worksheet(title=title, rows=1000, cols=10)
 
 visitplan_sheet = get_or_create("visitplan")
-recap_sheet = get_or_create("recapvisit")
 user_sheet = get_or_create("id_telegram")
 
 # =====================
-# HEADERS (BEDA SHEET)
+# HEADERS
 # =====================
 USER_HEADER = ["telegram_id", "nama_sa", "id_sa"]
+
+VISIT_HEADER = [
+    "No",
+    "Hari",
+    "Tanggal",
+    "Kegiatan",
+    "Nama Pelanggan",
+    "Plan Agenda",
+    "SA",
+    "ID SA"
+]
+
 if user_sheet.row_values(1) != USER_HEADER:
     user_sheet.update("A1:C1", [USER_HEADER])
 
-VISIT_HEADER = ["No", "Hari", "Tanggal", "Customer", "Agenda", "SA", "ID SA"]
-RECAP_HEADER = ["No", "Hari", "Tanggal", "Customer", "Agenda", "Hasil", "SA", "ID SA"]
-
 if visitplan_sheet.row_values(1) != VISIT_HEADER:
-    visitplan_sheet.update("A1:G1", [VISIT_HEADER])
-
-if recap_sheet.row_values(1) != RECAP_HEADER:
-    recap_sheet.update("A1:H1", [RECAP_HEADER])
+    visitplan_sheet.update("A1:H1", [VISIT_HEADER])
 
 # =====================
 # AUTO REGISTER USER
@@ -80,40 +84,48 @@ def get_user_info(tg_id):
     return "Guest", "000"
 
 # =====================
-# PARSER SUPPORT 1. CUSTOMER
+# PIPE PARSER
 # =====================
-def parse_blocks(text):
-
-    text = re.sub(r"\n\s*\d+\.\s*", "\n", text)
-
+def parse_pipe_lines(text):
     visits = []
-    current = {}
 
     for line in text.splitlines():
         line = line.strip()
 
-        if not line:
-            if current:
-                visits.append(current)
-                current = {}
+        if not line or "|" not in line:
             continue
 
-        if ":" in line:
-            k, v = line.split(":", 1)
-            current[k.lower().strip()] = v.strip()
+        if "." in line:
+            line = line.split(".", 1)[1].strip()
 
-    if current:
-        visits.append(current)
+        parts = line.split("|")
+
+        kegiatan = parts[0].strip()
+        pelanggan = parts[1].strip() if len(parts) > 1 else ""
+        agenda = parts[2].strip() if len(parts) > 2 else ""
+
+        visits.append({
+            "kegiatan": kegiatan,
+            "pelanggan": pelanggan,
+            "agenda": agenda
+        })
 
     return visits
 
 # =====================
-# VISIT PLAN (NO HASIL)
+# VISIT PLAN
 # =====================
 async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     parts = update.message.text.split("\n", 1)
-    blocks = parse_blocks(parts[1])
+
+    if len(parts) < 2:
+        await update.message.reply_text(
+            "Format:\n/visitplan\n1. Kegiatan|Nama Pelanggan|Plan Agenda"
+        )
+        return
+
+    rows = parse_pipe_lines(parts[1])
 
     now = update.message.date.astimezone()
     hari = now.strftime("%A")
@@ -123,16 +135,17 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     no = len(visitplan_sheet.get_all_values())
 
-    for b in blocks:
-        if not b.get("customer") or not b.get("agenda"):
+    for r in rows:
+        if not r["pelanggan"] or not r["agenda"]:
             continue
 
         visitplan_sheet.append_row([
             no,
             hari,
             tanggal,
-            b["customer"],
-            b["agenda"],
+            r["kegiatan"],
+            r["pelanggan"],
+            r["agenda"],
             nama_sa,
             id_sa
         ])
@@ -140,41 +153,6 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         no += 1
 
     await update.message.reply_text("✅ Visit plan tersimpan.")
-
-# =====================
-# RECAP VISIT (WAJIB HASIL)
-# =====================
-async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    parts = update.message.text.split("\n", 1)
-    blocks = parse_blocks(parts[1])
-
-    now = update.message.date.astimezone()
-    hari = now.strftime("%A")
-    tanggal = now.strftime("%d/%m/%Y")
-
-    nama_sa, id_sa = get_user_info(update.effective_user.id)
-
-    no = len(recap_sheet.get_all_values())
-
-    for b in blocks:
-        if not b.get("customer") or not b.get("agenda") or not b.get("hasil"):
-            continue
-
-        recap_sheet.append_row([
-            no,
-            hari,
-            tanggal,
-            b["customer"],
-            b["agenda"],
-            b["hasil"],
-            nama_sa,
-            id_sa
-        ])
-
-        no += 1
-
-    await update.message.reply_text("✅ Recap visit tersimpan.")
 
 # =====================
 # MY ID
@@ -189,7 +167,6 @@ def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("visitplan", visitplan))
-    app.add_handler(CommandHandler("recapvisit", recapvisit))
     app.add_handler(CommandHandler("myid", myid))
 
     print("BOT RUNNING")
