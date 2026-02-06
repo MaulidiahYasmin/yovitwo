@@ -6,6 +6,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import gspread
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
+from datetime import datetime
 
 # =====================
 # LOAD ENV
@@ -40,7 +41,7 @@ client = gspread.authorize(creds)
 spreadsheet = client.open_by_key(SHEET_ID)
 
 # =====================
-# SHEETS
+# GET / CREATE SHEET
 # =====================
 def get_or_create(title):
     try:
@@ -57,27 +58,9 @@ user_sheet = get_or_create("id_telegram")
 # =====================
 USER_HEADER = ["telegram_id", "nama_sa", "id_sa"]
 
-VISIT_HEADER = [
-    "No",
-    "Hari",
-    "Tanggal",
-    "Kegiatan",
-    "Nama Pelanggan",
-    "Plan Agenda",
-    "SA",
-    "ID SA"
-]
+VISIT_HEADER = ["No","Hari","Tanggal","Kegiatan","Nama Pelanggan","Plan Agenda","SA","ID SA"]
 
-RECAP_HEADER = [
-    "No",
-    "Hari",
-    "Tanggal",
-    "Customer",
-    "Agenda",
-    "Hasil",
-    "SA",
-    "ID SA"
-]
+RECAP_HEADER = ["No","Hari","Tanggal","Customer","Agenda","Hasil","SA","ID SA"]
 
 if user_sheet.row_values(1) != USER_HEADER:
     user_sheet.update("A1:C1", [USER_HEADER])
@@ -92,6 +75,7 @@ if recap_sheet.row_values(1) != RECAP_HEADER:
 # AUTO REGISTER USER
 # =====================
 def get_user_info(tg_id):
+
     for r in user_sheet.get_all_values()[1:]:
         if str(r[0]) == str(tg_id):
             return r[1], r[2]
@@ -100,20 +84,17 @@ def get_user_info(tg_id):
     return "Guest", "000"
 
 # =====================
-# MULTI BLOCK PARSER (FINAL)
+# BLOCK PARSER
 # =====================
 def parse_blocks(text):
 
     blocks = re.split(r"\n\s*\d+\.\s*", "\n" + text)[1:]
-
     results = []
 
     for blk in blocks:
         data = {}
 
         for line in blk.splitlines():
-            line = line.strip()
-
             if ":" in line:
                 k, v = line.split(":", 1)
                 data[k.lower().strip()] = v.strip()
@@ -128,10 +109,13 @@ def parse_blocks(text):
 # =====================
 async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    parts = update.message.text.split("\n", 1)
-    blocks = parse_blocks(parts[1])
+    try:
+        blocks = parse_blocks(update.message.text.split("\n",1)[1])
+    except:
+        await update.message.reply_text("❌ Format salah.")
+        return
 
-    now = update.message.date.astimezone()
+    now = datetime.now()
     hari = now.strftime("%A")
     tanggal = now.strftime("%d/%m/%Y")
 
@@ -145,7 +129,7 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not b.get("customer") or not b.get("agenda"):
             continue
 
-        kegiatan = b.get("kegiatan", "-")
+        kegiatan = b.get("kegiatan","-")
 
         visitplan_sheet.append_row([
             no,
@@ -158,20 +142,23 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             id_sa
         ])
 
-        no += 1
-        masuk += 1
+        no+=1
+        masuk+=1
 
     await update.message.reply_text(f"✅ {masuk} Visit Plan tersimpan.")
 
 # =====================
-# RECAP VISIT
+# RECAP VISIT (NO AGENDA)
 # =====================
 async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    parts = update.message.text.split("\n", 1)
-    blocks = parse_blocks(parts[1])
+    try:
+        blocks = parse_blocks(update.message.text.split("\n",1)[1])
+    except:
+        await update.message.reply_text("❌ Format salah.")
+        return
 
-    now = update.message.date.astimezone()
+    now = datetime.now()
     hari = now.strftime("%A")
     tanggal = now.strftime("%d/%m/%Y")
 
@@ -182,7 +169,7 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for b in blocks:
 
-        if not b.get("customer") or not b.get("agenda") or not b.get("hasil"):
+        if not b.get("customer") or not b.get("hasil"):
             continue
 
         recap_sheet.append_row([
@@ -190,25 +177,25 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
             hari,
             tanggal,
             b["customer"],
-            b["agenda"],
+            "",        # agenda kosong
             b["hasil"],
             nama_sa,
             id_sa
         ])
 
-        no += 1
-        masuk += 1
+        no+=1
+        masuk+=1
 
     await update.message.reply_text(f"✅ {masuk} Recap Visit tersimpan.")
 
 # =====================
-# MY ID
+# MYID
 # =====================
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Telegram ID kamu:\n{update.effective_user.id}")
+    await update.message.reply_text(str(update.effective_user.id))
 
 # =====================
-# START BOT
+# MAIN
 # =====================
 def main():
 
@@ -218,7 +205,7 @@ def main():
     app.add_handler(CommandHandler("recapvisit", recapvisit))
     app.add_handler(CommandHandler("myid", myid))
 
-    print("BOT RUNNING")
+    print("BOT RUNNING...")
     app.run_polling()
 
 if __name__ == "__main__":
