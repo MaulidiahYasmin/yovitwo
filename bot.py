@@ -100,33 +100,28 @@ def get_user_info(tg_id):
     return "Guest", "000"
 
 # =====================
-# PARSER FINAL
+# MULTI BLOCK PARSER (FINAL)
 # =====================
 def parse_blocks(text):
 
-    # remove leading numbering (1. 2. 3.)
-    text = re.sub(r"^\s*\d+\.\s*", "", text, flags=re.MULTILINE)
+    blocks = re.split(r"\n\s*\d+\.\s*", "\n" + text)[1:]
 
-    visits = []
-    current = {}
+    results = []
 
-    for line in text.splitlines():
-        line = line.strip()
+    for blk in blocks:
+        data = {}
 
-        if not line:
-            if current:
-                visits.append(current)
-                current = {}
-            continue
+        for line in blk.splitlines():
+            line = line.strip()
 
-        if ":" in line:
-            k, v = line.split(":", 1)
-            current[k.lower().strip()] = v.strip()
+            if ":" in line:
+                k, v = line.split(":", 1)
+                data[k.lower().strip()] = v.strip()
 
-    if current:
-        visits.append(current)
+        if data:
+            results.append(data)
 
-    return visits
+    return results
 
 # =====================
 # VISIT PLAN
