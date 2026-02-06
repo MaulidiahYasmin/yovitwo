@@ -100,12 +100,12 @@ def get_user_info(tg_id):
     return "Guest", "000"
 
 # =====================
-# MULTI BLOCK PARSER
+# PARSER FINAL
 # =====================
 def parse_blocks(text):
 
-    # keep blank line between 1. 2. 3.
-    text = re.sub(r"\n\s*\d+\.\s*", "\n\n", text)
+    # remove leading numbering (1. 2. 3.)
+    text = re.sub(r"^\s*\d+\.\s*", "", text, flags=re.MULTILINE)
 
     visits = []
     current = {}
@@ -134,10 +134,6 @@ def parse_blocks(text):
 async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     parts = update.message.text.split("\n", 1)
-    if len(parts) < 2:
-        await update.message.reply_text("Format salah.")
-        return
-
     blocks = parse_blocks(parts[1])
 
     now = update.message.date.astimezone()
@@ -147,7 +143,6 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nama_sa, id_sa = get_user_info(update.effective_user.id)
 
     no = len(visitplan_sheet.get_all_values())
-
     masuk = 0
 
     for b in blocks:
