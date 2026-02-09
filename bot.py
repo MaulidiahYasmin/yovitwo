@@ -47,7 +47,7 @@ def get_or_create(title):
     try:
         return spreadsheet.worksheet(title)
     except:
-        return spreadsheet.add_worksheet(title=title, rows=1000, cols=10)
+        return spreadsheet.add_worksheet(title=title, rows=1000, cols=15)
 
 visitplan_sheet = get_or_create("visitplan")
 recap_sheet = get_or_create("recapvisit")
@@ -58,26 +58,31 @@ user_sheet = get_or_create("id_telegram")
 # =====================
 USER_HEADER = ["telegram_id", "nama_sa", "id_sa"]
 
-VISIT_HEADER = ["No","Hari","Tanggal","Kegiatan","Nama Pelanggan","Plan Agenda","SA","ID SA"]
+VISIT_HEADER = [
+    "No","Hari","Tanggal","Datel",
+    "Kegiatan","Nama Pelanggan","Plan Agenda","SA","ID SA"
+]
 
-# AGENDA DIHAPUS DI RECAP
-RECAP_HEADER = ["No","Hari","Tanggal","Customer","Hasil","SA","ID SA"]
+RECAP_HEADER = [
+    "No","Hari","Tanggal","Datel",
+    "Customer","Hasil","SA","ID SA"
+]
 
 if user_sheet.row_values(1) != USER_HEADER:
     user_sheet.update("A1:C1", [USER_HEADER])
 
 if visitplan_sheet.row_values(1) != VISIT_HEADER:
-    visitplan_sheet.update("A1:H1", [VISIT_HEADER])
+    visitplan_sheet.update("A1:I1", [VISIT_HEADER])
 
 if recap_sheet.row_values(1) != RECAP_HEADER:
-    recap_sheet.update("A1:G1", [RECAP_HEADER])
+    recap_sheet.update("A1:H1", [RECAP_HEADER])
 
 # =====================
 # AUTO REGISTER USER
 # =====================
 def get_user_info(tg_id):
-
-    for r in user_sheet.get_all_values()[1:]:
+    rows = user_sheet.get_all_values()[1:]
+    for r in rows:
         if str(r[0]) == str(tg_id):
             return r[1], r[2]
 
@@ -88,18 +93,15 @@ def get_user_info(tg_id):
 # BLOCK PARSER
 # =====================
 def parse_blocks(text):
-
     blocks = re.split(r"\n\s*\d+\.\s*", "\n" + text)[1:]
     results = []
 
     for blk in blocks:
         data = {}
-
         for line in blk.splitlines():
             if ":" in line:
                 k, v = line.split(":", 1)
                 data[k.lower().strip()] = v.strip()
-
         if data:
             results.append(data)
 
@@ -111,9 +113,16 @@ def parse_blocks(text):
 async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
-        blocks = parse_blocks(update.message.text.split("\n",1)[1])
+        blocks = parse_blocks(update.message.text.split("\n", 1)[1])
     except:
-        await update.message.reply_text("❌ Format salah.")
+        await update.message.reply_text(
+            "❌ Format salah.\n\n"
+            "Contoh:\n"
+            "1. Kegiatan: Visit\n"
+            "Datel: Jakarta\n"
+            "Customer: PT ABC\n"
+            "Agenda: Followup"
+        )
         return
 
     now = datetime.now()
@@ -124,18 +133,29 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     no = len(visitplan_sheet.get_all_values())
     masuk = 0
+    error = []
 
-    for b in blocks:
+    for i, b in enumerate(blocks, start=1):
 
-        if not b.get("customer") or not b.get("agenda"):
+        kurang = []
+        if not b.get("datel"):
+            kurang.append("Datel")
+        if not b.get("customer"):
+            kurang.append("Customer")
+        if not b.get("agenda"):
+            kurang.append("Agenda")
+
+        if kurang:
+            error.append(f"Baris {i}: kurang {', '.join(kurang)}")
             continue
 
-        kegiatan = b.get("kegiatan","-")
+        kegiatan = b.get("kegiatan", "-")
 
         visitplan_sheet.append_row([
             no,
             hari,
             tanggal,
+            b["datel"],
             kegiatan,
             b["customer"],
             b["agenda"],
@@ -143,10 +163,14 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             id_sa
         ])
 
-        no+=1
-        masuk+=1
+        no += 1
+        masuk += 1
 
-    await update.message.reply_text(f"✅ {masuk} Visit Plan tersimpan.")
+    pesan = f"✅ {masuk} Visit Plan tersimpan."
+    if error:
+        pesan += "\n\n⚠️ Error:\n" + "\n".join(error)
+
+    await update.message.reply_text(pesan)
 
 # =====================
 # RECAP VISIT (NO AGENDA)
@@ -154,9 +178,15 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
-        blocks = parse_blocks(update.message.text.split("\n",1)[1])
+        blocks = parse_blocks(update.message.text.split("\n", 1)[1])
     except:
-        await update.message.reply_text("❌ Format salah.")
+        await update.message.reply_text(
+            "❌ Format salah.\n\n"
+            "Contoh:\n"
+            "1. Datel: Bandung\n"
+            "Customer: PT XYZ\n"
+            "Hasil: Deal"
+        )
         return
 
     now = datetime.now()
@@ -167,26 +197,41 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     no = len(recap_sheet.get_all_values())
     masuk = 0
+    error = []
 
-    for b in blocks:
+    for i, b in enumerate(blocks, start=1):
 
-        if not b.get("customer") or not b.get("hasil"):
+        kurang = []
+        if not b.get("datel"):
+            kurang.append("Datel")
+        if not b.get("customer"):
+            kurang.append("Customer")
+        if not b.get("hasil"):
+            kurang.append("Hasil")
+
+        if kurang:
+            error.append(f"Baris {i}: kurang {', '.join(kurang)}")
             continue
 
         recap_sheet.append_row([
             no,
             hari,
             tanggal,
+            b["datel"],
             b["customer"],
             b["hasil"],
             nama_sa,
             id_sa
         ])
 
-        no+=1
-        masuk+=1
+        no += 1
+        masuk += 1
 
-    await update.message.reply_text(f"✅ {masuk} Recap Visit tersimpan.")
+    pesan = f"✅ {masuk} Recap Visit tersimpan."
+    if error:
+        pesan += "\n\n⚠️ Error:\n" + "\n".join(error)
+
+    await update.message.reply_text(pesan)
 
 # =====================
 # MYID
@@ -198,7 +243,6 @@ async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # MAIN
 # =====================
 def main():
-
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("visitplan", visitplan))
