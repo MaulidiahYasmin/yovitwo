@@ -81,8 +81,7 @@ if recap_sheet.row_values(1) != RECAP_HEADER:
 # AUTO REGISTER USER
 # =====================
 def get_user_info(tg_id):
-    rows = user_sheet.get_all_values()[1:]
-    for r in rows:
+    for r in user_sheet.get_all_values()[1:]:
         if str(r[0]) == str(tg_id):
             return r[1], r[2]
 
@@ -115,14 +114,7 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         blocks = parse_blocks(update.message.text.split("\n", 1)[1])
     except:
-        await update.message.reply_text(
-            "❌ Format salah.\n\n"
-            "Contoh:\n"
-            "1. Kegiatan: Visit\n"
-            "Datel: Jakarta\n"
-            "Customer: PT ABC\n"
-            "Agenda: Followup"
-        )
+        await update.message.reply_text("⚠️ Error:\nFormat salah")
         return
 
     now = datetime.now()
@@ -166,27 +158,22 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         no += 1
         masuk += 1
 
-    pesan = f"✅ {masuk} Visit Plan tersimpan."
     if error:
-        pesan += "\n\n⚠️ Error:\n" + "\n".join(error)
+        pesan = "⚠️ Error:\n" + "\n".join(error)
+    else:
+        pesan = f"{masuk} Visit Plan tersimpan."
 
     await update.message.reply_text(pesan)
 
 # =====================
-# RECAP VISIT (NO AGENDA)
+# RECAP VISIT
 # =====================
 async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         blocks = parse_blocks(update.message.text.split("\n", 1)[1])
     except:
-        await update.message.reply_text(
-            "❌ Format salah.\n\n"
-            "Contoh:\n"
-            "1. Datel: Bandung\n"
-            "Customer: PT XYZ\n"
-            "Hasil: Deal"
-        )
+        await update.message.reply_text("⚠️ Error:\nFormat salah")
         return
 
     now = datetime.now()
@@ -227,9 +214,10 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         no += 1
         masuk += 1
 
-    pesan = f"✅ {masuk} Recap Visit tersimpan."
     if error:
-        pesan += "\n\n⚠️ Error:\n" + "\n".join(error)
+        pesan = "⚠️ Error:\n" + "\n".join(error)
+    else:
+        pesan = f"{masuk} Recap Visit tersimpan."
 
     await update.message.reply_text(pesan)
 
