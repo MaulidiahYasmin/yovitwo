@@ -123,9 +123,9 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nama_sa, id_sa = get_user_info(update.effective_user.id)
 
-    no = len(visitplan_sheet.get_all_values())
-    masuk = 0
+    no_sheet = len(visitplan_sheet.get_all_values())
     error = []
+    masuk = 0
 
     for i, b in enumerate(blocks, start=1):
 
@@ -138,13 +138,13 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kurang.append("Agenda")
 
         if kurang:
-            error.append(f"Baris {i}: kurang {', '.join(kurang)}")
+            error.append(f"No {i}: kurang {', '.join(kurang)}")
             continue
 
         kegiatan = b.get("kegiatan", "-")
 
         visitplan_sheet.append_row([
-            no,
+            no_sheet,
             hari,
             tanggal,
             b["datel"],
@@ -155,7 +155,7 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             id_sa
         ])
 
-        no += 1
+        no_sheet += 1
         masuk += 1
 
     if error:
@@ -182,9 +182,9 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nama_sa, id_sa = get_user_info(update.effective_user.id)
 
-    no = len(recap_sheet.get_all_values())
-    masuk = 0
+    no_sheet = len(recap_sheet.get_all_values())
     error = []
+    masuk = 0
 
     for i, b in enumerate(blocks, start=1):
 
@@ -197,11 +197,11 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kurang.append("Hasil")
 
         if kurang:
-            error.append(f"Baris {i}: kurang {', '.join(kurang)}")
+            error.append(f"No {i}: kurang {', '.join(kurang)}")
             continue
 
         recap_sheet.append_row([
-            no,
+            no_sheet,
             hari,
             tanggal,
             b["datel"],
@@ -211,7 +211,7 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
             id_sa
         ])
 
-        no += 1
+        no_sheet += 1
         masuk += 1
 
     if error:
