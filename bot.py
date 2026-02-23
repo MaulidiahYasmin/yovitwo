@@ -89,6 +89,12 @@ def get_user_info(tg_id):
     return "Guest", "000"
 
 # =====================
+# HELPER VALIDASI
+# =====================
+def is_empty(value):
+    return value is None or str(value).strip() == ""
+
+# =====================
 # BLOCK PARSER
 # =====================
 def parse_blocks(text):
@@ -123,32 +129,45 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nama_sa, id_sa = get_user_info(update.effective_user.id)
 
-    no_sheet = len(visitplan_sheet.get_all_values())
-    error = []
-    masuk = 0
+    error_list = []
 
+    # ===== VALIDASI SEMUA DATA =====
     for i, b in enumerate(blocks, start=1):
 
         kurang = []
-        if not b.get("datel"):
+
+        if is_empty(b.get("kegiatan")):
+            kurang.append("Kegiatan")
+
+        if is_empty(b.get("datel")):
             kurang.append("Datel")
-        if not b.get("customer"):
+
+        if is_empty(b.get("customer")):
             kurang.append("Customer")
-        if not b.get("agenda"):
+
+        if is_empty(b.get("agenda")):
             kurang.append("Agenda")
 
         if kurang:
-            error.append(f"No {i}: kurang {', '.join(kurang)}")
-            continue
+            error_list.append(f"No {i}: kurang {', '.join(kurang)}")
 
-        kegiatan = b.get("kegiatan", "-")
+    # ===== JIKA ADA ERROR =====
+    if error_list:
+        pesan = "⚠️ Error:\n" + "\n".join(error_list)
+        await update.message.reply_text(pesan)
+        return
+
+    # ===== SIMPAN DATA =====
+    no_sheet = len(visitplan_sheet.get_all_values())
+
+    for b in blocks:
 
         visitplan_sheet.append_row([
             no_sheet,
             hari,
             tanggal,
             b["datel"],
-            kegiatan,
+            b["kegiatan"],
             b["customer"],
             b["agenda"],
             nama_sa,
@@ -156,14 +175,10 @@ async def visitplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
 
         no_sheet += 1
-        masuk += 1
 
-    if error:
-        pesan = "⚠️ Error:\n" + "\n".join(error)
-    else:
-        pesan = f"{masuk} Visit Plan tersimpan."
-
-    await update.message.reply_text(pesan)
+    await update.message.reply_text(
+        f"✅ {len(blocks)} Visit Plan tersimpan."
+    )
 
 # =====================
 # RECAP VISIT
@@ -182,23 +197,32 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     nama_sa, id_sa = get_user_info(update.effective_user.id)
 
-    no_sheet = len(recap_sheet.get_all_values())
-    error = []
-    masuk = 0
+    error_list = []
 
     for i, b in enumerate(blocks, start=1):
 
         kurang = []
-        if not b.get("datel"):
+
+        if is_empty(b.get("datel")):
             kurang.append("Datel")
-        if not b.get("customer"):
+
+        if is_empty(b.get("customer")):
             kurang.append("Customer")
-        if not b.get("hasil"):
+
+        if is_empty(b.get("hasil")):
             kurang.append("Hasil")
 
         if kurang:
-            error.append(f"No {i}: kurang {', '.join(kurang)}")
-            continue
+            error_list.append(f"No {i}: kurang {', '.join(kurang)}")
+
+    if error_list:
+        pesan = "⚠️ Error:\n" + "\n".join(error_list)
+        await update.message.reply_text(pesan)
+        return
+
+    no_sheet = len(recap_sheet.get_all_values())
+
+    for b in blocks:
 
         recap_sheet.append_row([
             no_sheet,
@@ -212,14 +236,10 @@ async def recapvisit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
 
         no_sheet += 1
-        masuk += 1
 
-    if error:
-        pesan = "⚠️ Error:\n" + "\n".join(error)
-    else:
-        pesan = f"{masuk} Recap Visit tersimpan."
-
-    await update.message.reply_text(pesan)
+    await update.message.reply_text(
+        f"✅ {len(blocks)} Recap Visit tersimpan."
+    )
 
 # =====================
 # MYID
